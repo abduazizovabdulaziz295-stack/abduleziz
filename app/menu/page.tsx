@@ -1,360 +1,439 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useState } from "react";
-import { X, Heart, Minus, Plus, ShoppingBag } from "lucide-react";
+import { ShoppingBag, Plus, Minus, X, Search, ChevronRight, Loader, CheckCircle, ArrowLeft } from "lucide-react";
 
 interface MenuItem {
-  id: string;
-  title: string;
-  price: string;
-  image: string;
-  category: string;
-  description?: string;
+id: string;
+title: string;
+price: number;
+image: string;
+category: string;
+description: string;
+badge?: string | null;
 }
 
 interface CartItem extends MenuItem {
-  quantity: number;
+quantity: number;
 }
 
-const categories = ["All", "Burger", "Twister", "Chicken", "Box"];
+const CATEGORIES = ["Barchasi", "Burger", "Twister", "Tovuq", "Box Meal"];
+const API_URL = "https://698d9ca0b79d1c928ed5ec22.mockapi.io/kfc";
+const FALLBACK: Record<string, string> = {
+Burger: "https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=600&h=400&fit=crop",
+Twister: "https://images.unsplash.com/photo-1626700051175-6818013e1d4f?w=600&h=400&fit=crop",
+Tovuq: "https://images.unsplash.com/photo-1562967914-608f82629710?w=600&h=400&fit=crop",
+"Box Meal": "https://images.unsplash.com/photo-1586816001966-79b736744398?w=600&h=400&fit=crop",
+};
 
-const localItems: MenuItem[] = [
-  {
-    id: "b1",
-    title: "Cheese Burger",
-    price: "25000",
-    image: "/burger1.png",
-    category: "Burger",
-    description: "Sut va pishloqning mukammal uyg‘unligi bilan mazali burger.",
-  },
-  {
-    id: "b2",
-    title: "Double Burger", 
-    price: "32000",
-    image: "/burger2.png",
-    category: "Burger",
-    description: "Ikki go‘sht qatlami bilan haqiqiy burger tajribasi.",
-  },
-  {
-    id: "b3",
-    title: "Spicy Burger",
-    price: "27000",
-    image: "/burger3.png",
-    category: "Burger",
-    description: "Achchiq sous va maxfiy ziravorlar bilan jonli ta’m.",
-  },
-  {
-    id: "b4",
-    title: "BBQ Burger",
-    price: "30000",
-    image: "/burger4.png",
-    category: "Burger",
-    description: "Barbekyu sousi va pishloq bilan boyitilgan burger.",
-  },
-  {
-    id: "b5",
-    title: "Chicken Burger",
-    price: "26000",
-    image: "/burger5.png",
-    category: "Burger",
-    description: "Tovuq go‘shti va yangi sabzavotlar bilan mazali kombinatsiya.",
-  },
-];
+const fmt = (n: number) => n.toLocaleString("uz-UZ") + " UZS";
 
 export default function MenuPage() {
-  const [items, setItems] = useState<MenuItem[]>([]);
-  const [search, setSearch] = useState("");
-  const [category, setCategory] = useState("All");
-  const [selectedItem, setSelectedItem] = useState<MenuItem | null>(null);
-  const [quantity, setQuantity] = useState(1);
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [liked, setLiked] = useState<string[]>([]);
+const [cat, setCat] = useState("Barchasi");
+const [items, setItems] = useState<MenuItem[]>([]);
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState("");
+const [search, setSearch] = useState("");
+const [active, setActive] = useState<MenuItem | null>(null);
+const [qty, setQty] = useState(1);
+const [cart, setCart] = useState<CartItem[]>([]);
+const [cartOpen, setCartOpen] = useState(false);
+const [checkoutOpen, setCheckoutOpen] = useState(false);
+const [name, setName] = useState("");
+const [phone, setPhone] = useState("");
+const [address, setAddress] = useState("");
+const [placing, setPlacing] = useState(false);
+const [success, setSuccess] = useState(false);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      if (category === "All") {
-        const res = await fetch(
-          "https://698d9ca0b79d1c928ed5ec22.mockapi.io/kfc"
-        );
-        const data = await res.json();
+useEffect(() => {
+try { const s = localStorage.getItem("kfc_cart"); if (s) setCart(JSON.parse(s)); } catch { /**/ }
+}, []);
 
-        const formatted: MenuItem[] = data.map((item: any) => ({
-          id: item.id,
-          title: item.title || item.name || "No title",
-          price: item.price || "0",
-          category: "All",
-          image: item.image || "/placeholder.png",
-          description: item.description || "Mazali taom sizni kutmoqda.",
-        }));
+useEffect(() => {
+try { localStorage.setItem("kfc_cart", JSON.stringify(cart)); } catch { /**/ }
+}, [cart]);
 
-        setItems(formatted);
-      } else {
-        setItems(localItems.filter((i) => i.category === category));
-      }
-    };
+useEffect(() => {
+let cancelled = false;
+const load = async () => {
+setLoading(true);
+setError("");
+try {
+const res = await fetch(API_URL);
+if (!res.ok) throw new Error("Server xatolik");
+const data = await res.json() as Record<string, unknown>[];
+if (cancelled) return;
+setItems(data.map((d) => ({
+id: String(d.id ?? ""),
+title: String(d.title ?? d.name ?? "Nomsiz"),
+price: Number(d.price) || 0,
+category: String(d.category ?? "Barchasi"),
+description: String(d.description ?? "Mazali taom."),
+image: String(d.image || FALLBACK[String(d.category ?? "")] || FALLBACK.Burger),
+badge: null,
+})));
+} catch (e) {
+if (!cancelled) setError(e instanceof Error ? e.message : "Xatolik");
+} finally {
+if (!cancelled) setLoading(false);
+}
+};
+load();
+return () => { cancelled = true; };
+}, []);
 
-    fetchData();
-  }, [category]);
+const filtered = items.filter((i) =>
+(cat === "Barchasi" || i.category === cat) &&
+i.title.toLowerCase().includes(search.toLowerCase())
+);
 
-  const filteredItems = items.filter((item) =>
-    item.title.toLowerCase().includes(search.toLowerCase())
-  );
+const addToCart = (item: MenuItem, q: number) =>
+setCart((prev) => {
+const ex = prev.find((i) => i.id === item.id);
+if (ex) return prev.map((i) => i.id === item.id ? { ...i, quantity: Math.min(i.quantity + q, 10) } : i);
+return [...prev, { ...item, quantity: q }];
+});
 
-  const formatPrice = (n: number) => n.toLocaleString("uz-UZ");
+const changeQty = (id: string, dir: 1 | -1) =>
+setCart((prev) =>
+prev.map((i) => i.id === id ? { ...i, quantity: i.quantity + dir } : i).filter((i) => i.quantity > 0)
+);
 
-  const addToCart = (item: MenuItem, qty: number) => {
-    setCart((prev) => {
-      const exist = prev.find((i) => i.id === item.id);
-      if (exist) {
-        return prev.map((i) =>
-          i.id === item.id
-            ? { ...i, quantity: i.quantity + qty }
-            : i
-        );
-      }
-      return [...prev, { ...item, quantity: qty }];
-    });
-  };
+const cartTotal = cart.reduce((s, i) => s + i.price * i.quantity, 0);
+const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
+const canOrder = name.trim().length > 0 && phone.trim().length > 0 && address.trim().length > 0;
 
-  const updateQty = (id: string, type: "inc" | "dec") => {
-    setCart((prev) =>
-      prev
-        .map((i) =>
-          i.id === id
-            ? {
-                ...i,
-                quantity:
-                  type === "inc"
-                    ? i.quantity + 1
-                    : i.quantity - 1,
-              }
-            : i
-        )
-        .filter((i) => i.quantity > 0)
-    );
-  };
+const placeOrder = () => {
+if (!canOrder) return;
+setPlacing(true);
+setTimeout(() => {
+setPlacing(false);
+setSuccess(true);
+setCart([]);
+setName("");
+setPhone("");
+setAddress("");
+}, 2000);
+};
 
-  const total = cart.reduce(
-    (sum, i) => sum + Number(i.price) * i.quantity,
-    0
-  );
+return (
+<div className="min-h-screen bg-gray-50">
 
-  return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-gray-50 relative overflow-hidden">
 
-      <div className="w-full md:w-64 bg-white shadow-lg p-6">
-        <h2 className="text-lg font-bold mb-6">🍔 Menu</h2>
-        {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setCategory(cat)}
-            className={`block w-full text-left px-4 py-3 rounded-xl mb-2 transition ${
-              category === cat
-                ? "bg-red-100 text-red-600"
-                : "hover:bg-gray-100"
-            }`}
-          >
-            {cat}
-          </button>
-        ))}
-      </div>
+<nav className="sticky top-0 z-30 bg-[#E4002B]">
+<div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+<div className="flex items-center gap-3">
+<div className="w-9 h-9 bg-white rounded-full flex items-center justify-center">
+<span className="text-[#E4002B] font-black text-xs">KFC</span>
+</div>
+<span className="text-white font-black text-lg tracking-tight hidden sm:block">Kentucky Fried Chicken</span>
+</div>
+<button onClick={() => setCartOpen(true)} className="flex items-center gap-2 bg-white text-[#E4002B] font-bold px-4 py-2 rounded-full text-sm hover:bg-red-50 transition">
+<ShoppingBag size={16} />
+Savat
+{cartCount > 0 && (
+<span className="bg-[#E4002B] text-white text-xs font-black w-5 h-5 rounded-full flex items-center justify-center">{cartCount}</span>
+)}
+</button>
+</div>
+</nav>
 
-      <div className="flex-1 p-8">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-          <input
-            placeholder="Mahsulot qidirish..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="border px-6 py-4 rounded-full w-full md:w-1/2 shadow-sm focus:ring-2 focus:ring-red-600 transition"
-          />
 
-          <button
-            onClick={() => setCartOpen(true)}
-            className="relative"
-          >
-            <ShoppingBag size={28} />
-            {cart.length > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs w-5 h-5 flex items-center justify-center rounded-full">
-                {cart.length}
-              </span>
-            )}
-          </button>
-        </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredItems.map((item) => (
-            <div
-              key={item.id}
-              className="bg-white rounded-3xl shadow-xl p-6 flex flex-col items-center relative hover:shadow-2xl transition cursor-pointer"
-            >
-              <button
-                onClick={() =>
-                  setLiked((prev) =>
-                    prev.includes(item.id)
-                      ? prev.filter((i) => i !== item.id)
-                      : [...prev, item.id]
-                  )
-                }
-                className="absolute top-4 right-4"
-              >
-                <Heart
-                  size={20}
-                  className={
-                    liked.includes(item.id)
-                      ? "fill-red-500 text-red-500"
-                      : "text-gray-400"
-                  }
-                />
-              </button>
+<div className="bg-[#E4002B] px-6 pt-8 pb-10">
+<div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-end justify-between gap-6">
+<div>
+<p className="text-red-200 text-xs font-bold uppercase tracking-widest mb-2">Bizning Menyu</p>
+<h1 className="text-white font-black text-4xl sm:text-5xl leading-none">
+It&apos;s Finger<br />Lickin&apos; Good.
+</h1>
+</div>
+<div className="relative w-full sm:w-64">
+<Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+<input
+value={search}
+onChange={(e) => setSearch(e.target.value)}
+placeholder="Qidirish..."
+className="w-full pl-9 pr-4 py-3 rounded-xl text-sm bg-white outline-none shadow placeholder:text-gray-400"
+/>
+</div>
+</div>
+</div>
 
-              <Image
-                src={item.image}
-                alt={item.title}
-                width={180}
-                height={180}
-                className="rounded-2xl object-cover mb-4"
-                onClick={() => {
-                  setSelectedItem(item);
-                  setQuantity(1);
-                }}
-              />
 
-              <h2 className="font-bold text-lg mb-2 text-center">
-                {item.title}
-              </h2>
+<div className="bg-white border-b border-gray-200 sticky top-16 z-20">
+<div className="max-w-6xl mx-auto px-6 flex gap-1 py-3 overflow-x-auto no-scrollbar">
+{CATEGORIES.map((c) => (
+<button
+key={c}
+onClick={() => setCat(c)}
+className={`whitespace-nowrap px-5 py-2 rounded-full text-sm font-bold transition ${cat === c ? "bg-[#E4002B] text-white" : "text-gray-500 hover:bg-gray-100"}`}
+>
+{c}
+</button>
+))}
+</div>
+</div>
 
-              {item.description && (
-                <p className="text-gray-500 text-center text-sm mb-3">
-                  {item.description}
-                </p>
-              )}
 
-              <span className="bg-red-600 text-white px-6 py-2 rounded-full font-semibold">
-                {formatPrice(Number(item.price))} UZS
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
+<main className="max-w-6xl mx-auto px-6 py-8">
+{loading && (
+<div className="flex items-center justify-center py-24 gap-3 text-gray-400">
+<Loader size={20} className="animate-spin text-[#E4002B]" />
+<span className="font-semibold">Yuklanmoqda...</span>
+</div>
+)}
+{error && (
+<div className="text-center py-24">
+<p className="text-4xl mb-3">⚠️</p>
+<p className="font-bold text-red-500">{error}</p>
+</div>
+)}
+{!loading && !error && (
+<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+{filtered.map((item) => (
+<div
+key={item.id}
+onClick={() => { setActive(item); setQty(1); }}
+className="group bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden cursor-pointer hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
+>
+<div className="relative h-48 overflow-hidden bg-gray-100">
+<img
+src={item.image}
+alt={item.title}
+className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK.Burger; }}
+/>
 
-      {selectedItem && (
-        <div
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={() => setSelectedItem(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl"
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">{selectedItem.title}</h2>
-              <X
-                onClick={() => setSelectedItem(null)}
-                className="cursor-pointer"
-              />
-            </div>
 
-            <Image
-              src={selectedItem.image}
-              alt={selectedItem.title}
-              width={300}
-              height={300}
-              className="mx-auto object-contain rounded-xl mb-4"
-            />
+{item.badge && (
+<span className="absolute top-3 left-3 bg-[#E4002B] text-white text-[10px] font-black uppercase tracking-wide px-2.5 py-1 rounded-full">{item.badge}</span>
+)}
+</div>
+<div className="p-4 flex items-center justify-between gap-3">
+<div className="min-w-0">
+<h3 className="font-black text-gray-900 truncate">{item.title}</h3>
+<p className="text-[#E4002B] font-bold text-sm mt-0.5">{fmt(item.price)}</p>
+</div>
+<div className="w-9 h-9 shrink-0 bg-[#E4002B] rounded-full flex items-center justify-center text-white group-hover:scale-110 transition-transform">
+<Plus size={16} />
+</div>
+</div>
 
-            {selectedItem.description && (
-              <p className="text-gray-600 text-center mb-4">
-                {selectedItem.description}
-              </p>
-            )}
 
-            <div className="flex justify-center items-center gap-6 mb-4">
-              <button
-                onClick={() =>
-                  setQuantity((q) => Math.max(1, q - 1))
-                }
-                className="bg-gray-200 p-2 rounded-full hover:bg-gray-300 transition"
-              >
-                <Minus />
-              </button>
-              <span className="text-lg font-bold">{quantity}</span>
-              <button
-                onClick={() => setQuantity((q) => q + 1)}
-                className="bg-gray-200 p-2 rounded-full hover:bg-gray-300 transition"
-              >
-                <Plus />
-              </button>
-            </div>
+</div>
+))}
+</div>
+)}
+{!loading && !error && filtered.length === 0 && (
+<div className="text-center py-24 text-gray-400">
+<p className="text-5xl mb-3">🍗</p>
+<p className="font-bold">Hech narsa topilmadi</p>
+</div>
 
-            <button
-              onClick={() => {
-                addToCart(selectedItem, quantity);
-                setSelectedItem(null);
-              }}
-              className="w-full bg-red-600 text-white py-3 rounded-2xl font-semibold hover:bg-red-700 transition"
-            >
-              Savatga qo‘shish • {formatPrice(Number(selectedItem.price) * quantity)} UZS
-            </button>
-          </div>
-        </div>
-      )}
 
-      <div
-        className={`fixed top-0 right-0 h-full w-96 bg-white shadow-2xl z-50 transform ${
-          cartOpen ? "translate-x-0" : "translate-x-full"
-        } transition-transform duration-300`}
-      >
-        <div className="p-6 flex justify-between border-b">
-          <h2 className="text-lg font-bold">Savatcha</h2>
-          <X
-            onClick={() => setCartOpen(false)}
-            className="cursor-pointer"
-          />
-        </div>
 
-        <div className="p-6 space-y-4 overflow-y-auto h-[70%]">
-          {cart.length === 0 && <p>Savatcha bo‘sh</p>}
-          {cart.map((item) => (
-            <div
-              key={item.id}
-              className="flex justify-between items-center"
-            >
-              <div>
-                <p className="font-semibold">{item.title}</p>
-                <p className="text-sm text-gray-500">
-                  {formatPrice(Number(item.price) * item.quantity)} UZS
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => updateQty(item.id, "dec")}
-                  className="p-1 bg-gray-200 rounded-full hover:bg-gray-300 transition"
-                >
-                  <Minus size={16} />
-                </button>
-                <span>{item.quantity}</span>
-                <button
-                  onClick={() => updateQty(item.id, "inc")}
-                  className="p-1 bg-gray-200 rounded-full hover:bg-gray-300 transition"
-                >
-                  <Plus size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+)}
+</main>
 
-        <div className="p-6 border-t">
-          <p className="font-bold mb-4">
-            Jami: {formatPrice(total)} UZS
-          </p>
-          <button className="w-full bg-red-600 text-white py-3 rounded-2xl font-semibold hover:bg-red-700 transition">
-            Buyurtma berish
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+
+{active && (
+<div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={() => setActive(null)}>
+<div className="bg-white w-full max-w-md rounded-3xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
+<div className="relative h-52">
+<img src={active.image} alt={active.title} className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK.Burger; }} />
+<button onClick={() => setActive(null)} className="absolute top-3 right-3 bg-white rounded-full w-8 h-8 flex items-center justify-center shadow">
+<X size={15} className="text-gray-700" />
+</button>
+
+
+</div>
+<div className="p-6">
+<h2 className="font-black text-2xl text-gray-900">{active.title}</h2>
+<p className="text-gray-500 text-sm mt-1 mb-6">{active.description}</p>
+<div className="flex items-center justify-between">
+<div className="flex items-center gap-3">
+<button onClick={() => setQty((q) => Math.max(1, q - 1))} className="w-9 h-9 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-[#E4002B] transition">
+<Minus size={14} />
+
+</button>
+<span className="font-black text-xl w-5 text-center">{qty}</span>
+<button onClick={() => setQty((q) => Math.min(10, q + 1))} className="w-9 h-9 rounded-full border-2 border-gray-200 flex items-center justify-center hover:border-[#E4002B] transition">
+<Plus size={14} />
+</button>
+</div>
+<button onClick={() => { addToCart(active, qty); setActive(null); }} className="flex items-center gap-2 bg-[#E4002B] text-white font-black px-6 py-3 rounded-full hover:bg-red-700 transition active:scale-95">
+Qo&apos;shish <ChevronRight size={16} />
+</button>
+</div>
+<p className="text-right text-[#E4002B] font-black text-lg mt-4">{fmt(active.price * qty)}</p>
+</div>
+</div>
+</div>
+)}
+
+
+{cartOpen && (
+<div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm" onClick={() => setCartOpen(false)}>
+<div className="bg-white w-full max-w-sm h-full flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+<div className="bg-[#E4002B] px-6 py-5 flex items-center justify-between">
+<h2 className="text-white font-black text-xl">Savat</h2>
+<button onClick={() => setCartOpen(false)} className="text-white/80 hover:text-white"><X size={22} /></button>
+
+
+</div>
+<div className="flex-1 overflow-y-auto divide-y divide-gray-100 px-6">
+{cart.length === 0 ? (
+<div className="text-center py-20 text-gray-400">
+<p className="text-5xl mb-3">🛒</p>
+<p className="font-bold">Savat bo&apos;sh</p>
+
+
+
+</div>
+) : cart.map((item) => (
+<div key={item.id} className="flex items-center gap-3 py-4">
+<img src={item.image} alt={item.title} className="w-14 h-14 rounded-xl object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).src = FALLBACK.Burger; }} />
+<div className="flex-1 min-w-0">
+<p className="font-bold text-sm text-gray-900 truncate">{item.title}</p>
+<p className="text-[#E4002B] font-bold text-sm">{fmt(item.price * item.quantity)}</p>
+</div>
+
+<div className="flex items-center gap-1.5 shrink-0">
+<button onClick={() => changeQty(item.id, -1)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition"><Minus size={12} /></button>
+<span className="font-black text-sm w-4 text-center">{item.quantity}</span>
+<button onClick={() => changeQty(item.id, 1)} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center hover:bg-gray-200 transition"><Plus size={12} /></button>
+</div>
+</div>
+))}
+</div>
+{cart.length > 0 && (
+<div className="px-6 py-5 border-t border-gray-100">
+<div className="flex justify-between items-center mb-4">
+<span className="text-gray-500 font-semibold">Jami</span>
+<span className="font-black text-xl">{fmt(cartTotal)}</span>
+</div>
+<button
+onClick={() => { setCartOpen(false); setCheckoutOpen(true); }}
+className="w-full bg-[#E4002B] text-white font-black py-4 rounded-2xl hover:bg-red-700 transition active:scale-95"
+>
+Buyurtma berish
+</button>
+</div>
+)}
+</div>
+</div>
+)}
+
+
+{checkoutOpen && (
+<div className="fixed inset-0 z-50 flex justify-end bg-black/60 backdrop-blur-sm" onClick={() => { if (!placing) setCheckoutOpen(false); }}>
+<div className="bg-white w-full max-w-sm h-full flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
+
+
+<div className="bg-[#E4002B] px-6 py-5 flex items-center gap-4">
+<button onClick={() => { setCheckoutOpen(false); setCartOpen(true); }} className="text-white/80 hover:text-white">
+<ArrowLeft size={22} />
+</button>
+<h2 className="text-white font-black text-xl">Buyurtma</h2>
+</div>
+
+{success ? (
+
+<div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+<div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mb-5">
+<CheckCircle size={40} className="text-green-500" />
+</div>
+<h3 className="font-black text-2xl text-gray-900 mb-2">Buyurtma qabul qilindi!</h3>
+<p className="text-gray-500 text-sm mb-8">Yaqin orada kuryerimiz siz bilan bog&apos;lanadi. O&apos;rtacha vaqt: 25–35 daqiqa.</p>
+<button
+onClick={() => { setSuccess(false); setCheckoutOpen(false); }}
+className="bg-[#E4002B] text-white font-black px-8 py-3 rounded-full hover:bg-red-700 transition"
+>
+Davom etish
+</button>
+</div>
+) : (
+<div className="flex-1 overflow-y-auto">
+
+
+<div className="px-6 pt-6 pb-4 border-b border-gray-100">
+<p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Buyurtma</p>
+{cart.map((item) => (
+<div key={item.id} className="flex justify-between items-center py-1.5">
+<span className="text-sm text-gray-700 font-medium truncate pr-4">{item.title} <span className="text-gray-400">×{item.quantity}</span></span>
+<span className="text-sm font-bold text-gray-900 shrink-0">{fmt(item.price * item.quantity)}</span>
+</div>
+))}
+<div className="flex justify-between items-center pt-3 mt-2 border-t border-gray-100">
+<span className="font-bold text-gray-900">Jami</span>
+<span className="font-black text-[#E4002B] text-lg">{fmt(cartTotal)}</span>
+</div>
+</div>
+
+
+<div className="px-6 py-5 flex flex-col gap-4">
+<p className="text-xs font-bold uppercase tracking-widest text-gray-400">Yetkazib berish</p>
+
+<div className="flex flex-col gap-1.5">
+<label className="text-xs font-bold text-gray-500">Ismingiz</label>
+<input
+value={name}
+onChange={(e) => setName(e.target.value)}
+placeholder="Abdulaziz"
+className="border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#E4002B] transition"
+/>
+</div>
+
+<div className="flex flex-col gap-1.5">
+<label className="text-xs font-bold text-gray-500">Telefon raqam</label>
+<input
+value={phone}
+      onChange={(e) => setPhone(e.target.value)}
+ placeholder="+998 90 000 00 00"
+  type="tel"
+       className="border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#E4002B] transition"
+/>
+</div>
+
+<div className="flex flex-col gap-1.5">
+<label className="text-xs font-bold text-gray-500">Manzil</label>
+<input
+value={address}
+onChange={(e) => setAddress(e.target.value)}
+placeholder="Ko'cha, uy raqami"
+className="border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:border-[#E4002B] transition"
+/>
+</div>
+</div>
+</div>
+)}
+
+
+{!success && (
+<div className="px-6 py-5 border-t border-gray-100">
+<button
+onClick={placeOrder}
+disabled={!canOrder || placing}
+className="w-full bg-[#E4002B] text-white font-black py-4 rounded-2xl hover:bg-red-700 transition active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+>
+{placing ? (
+<><Loader size={18} className="animate-spin" />Yuklanmoqda...</>
+) : (
+"Tasdiqlash"
+)}
+</button>
+{!canOrder && (
+<p className="text-center text-xs text-gray-400 mt-2">Barcha maydonlarni to&apos;ldiring</p>
+)}
+</div>
+)}
+
+</div>
+</div>
+)}
+
+<style>{`.no-scrollbar::-webkit-scrollbar{display:none}.no-scrollbar{-ms-overflow-style:none;scrollbar-width:none}`}</style>
+</div>
+);
 }
